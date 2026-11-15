@@ -823,3 +823,29 @@ fn summarize_shallow(tree: &ValueTree) -> String {
 const DRIVER_MAIN: &str = include_str!("template/main.rs");
 const AFZRT: &str = include_str!("template/afzrt.rs");
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn integers_accept_both_number_spellings_and_reject_the_rest() {
+        let u64_build = Build::Int("u64");
+        assert_eq!(value_for(&u64_build, &ValueTree::number(7.0)).unwrap(), serde_json::json!(7));
+        assert_eq!(value_for(&u64_build, &ValueTree::new(ValueNode::BigInt { value: "9".into() })).unwrap(), serde_json::json!(9));
+        assert!(value_for(&u64_build, &ValueTree::string("7")).is_err(), "a string is not a number");
+    }
+
+    #[test]
+    fn a_buffer_materializes_as_the_element_type() {
+        let bytes = Build::Vec { inner: Box::new(Build::Int("u8")) };
+        let buffer = ValueTree::new(ValueNode::Buffer { bytes: vec![1, 2, 255] });
+        assert_eq!(value_for(&bytes, &buffer).unwrap(), serde_json::json!([1, 2, 255]));
+    }
+
+    #[test]
+    fn a_json_value_parameter_passes_any_json_through() {
+        let object = ValueTree::new(ValueNode::Object { fields: vec![("k".to_string(), ValueTree::number(1.0))] });
+        assert_eq!(value_for(&Build::JsonValue, &object).unwrap(), serde_json::json!({ "k": 1.0 }));
+    }
+}

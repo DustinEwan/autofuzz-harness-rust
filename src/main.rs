@@ -382,3 +382,37 @@ fn prepared_shape(value: &ValueTree) -> &'static str {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn respond(method: &str, params: &str) -> Response {
+        let line = format!("{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"{method}\",\"params\":{params}}}");
+        let request = parse_request(&line).expect("a well-formed request line");
+        Harness::new().respond(&request)
+    }
+
+    fn code(response: Response) -> i64 {
+        match response {
+            Response::Failure(failure) => failure.error.code,
+            Response::Success(_) => panic!("expected an error response"),
+        }
+    }
+
+    #[test]
+    fn methods_this_harness_does_not_answer_get_method_not_found() {
+        assert_eq!(code(respond("nope", "{}")), rpc::METHOD_NOT_FOUND);
+        assert_eq!(code(respond("minimize", "{}")), rpc::METHOD_NOT_FOUND, "minimize is not a declared capability");
+    }
+
+    #[test]
+    fn state_errors_are_invalid_request() {
+        assert_eq!(code(respond("prepare", "{\"targetId\":\"afz:t:0\",\"values\":[]}")), INVALID_REQUEST, "prepare before discover");
+    }
+
+    #[test]
+    fn unreadable_params_are_invalid_params() {
+        assert_eq!(code(respond("discover", "5")), INVALID_PARAMS, "params that do not fit the method's payload");
+    }
+}

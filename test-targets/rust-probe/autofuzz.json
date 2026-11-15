@@ -1,0 +1,19 @@
+{
+  "project": "rust-probe",
+  "harness": {
+    "name": "rust",
+    "include": ["**/*.rs"]
+  },
+  "oracles": {},
+  "budget": {
+    "invocations": 20000,
+    "wallClockMs": 900000,
+    "workers": 0,
+    "maxCorpus": 2048,
+    "strategy": "guided"
+  },
+  "output": {
+    "dir": ".autofuzz",
+    "renderers": ["json", "markdown"]
+  }
+}

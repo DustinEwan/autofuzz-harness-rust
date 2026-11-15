@@ -882,3 +882,57 @@ fn matches_segment(pattern: &str, text: &str) -> bool {
     }
     rest.is_empty() || pattern.ends_with('*')
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A one-crate project on disk: discovery reads sources, so the fixture is files, not a
+    /// compiled crate.
+    fn probe_project(source: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("afz-rust-discover-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("Cargo.toml"), "[package]\nname = \"probe\"\nversion = \"0.0.0\"\nedition = \"2021\"\npublish = false\n").unwrap();
+        std::fs::write(root.join("src").join("lib.rs"), source).unwrap();
+        root
+    }
+
+    #[test]
+    fn discovery_targets_public_calls_and_reports_everything_else() {
+        let root = probe_project(
+            "pub fn free(values: Vec<u8>) -> usize { values.len() }\n\
+             fn private(value: u64) -> u64 { value }\n\
+             pub struct Secret { hidden: u64 }\n\
+             impl Secret { pub fn read(&self) -> u64 { self.hidden } }\n\
+             pub struct Open { pub v: u64 }\n\
+             impl Open { pub fn set(&mut self, v: u64) { self.v = v; } }\n\
+             pub fn takes_closure(f: fn(u64) -> u64) -> u64 { f(1) }\n\
+             pub mod inner { pub fn nested(text: String) -> usize { text.len() } }\n",
+        );
+        let req = DiscoverReq { root: root.display().to_string(), include: Some(vec!["**/*.rs".to_string()]), exclude: None, config_path: None };
+        let inventory = discover(&req).expect("discovery of a parseable crate");
+        let _ = std::fs::remove_dir_all(&root);
+
+        let mut names: Vec<&str> = inventory.targets.iter().map(|t| t.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(names, ["Open::set", "free", "nested"], "the public free functions and the constructible-receiver method, named as discovery spells them");
+
+        let set = inventory.targets.iter().find(|t| t.name == "Open::set").expect("Open::set is a target");
+        assert_eq!(set.call_path, "probe::Open::set");
+        assert_eq!(set.params[0].receiver, ReceiverKind::RefMut, "&mut self reaches the call mutably");
+
+        let skipped: HashMap<&str, SkipReason> = inventory.discovery.skipped.iter().map(|s| (s.name.as_str(), s.reason)).collect();
+        assert_eq!(skipped.get("private"), Some(&SkipReason::NotPublic));
+        assert_eq!(skipped.get("takes_closure"), Some(&SkipReason::UnsupportedSignature));
+        let secret = inventory.discovery.skipped.iter().find(|s| s.name == "Secret::read").expect("Secret::read is reported, never dropped");
+        assert_eq!(secret.reason, SkipReason::UnconstructibleParameter);
+        assert_eq!(secret.blocked_by.as_ref().map(|b| b.type_.as_str()), Some("probe::Secret"));
+
+        assert!(inventory.universe.contains_key("probe::private"), "the coverage universe keeps private functions: {:?}", inventory.universe.keys().collect::<Vec<_>>());
+        assert!(inventory.universe.contains_key("probe::inner::nested"), "and functions inside private modules");
+
+        let free = inventory.targets.iter().find(|t| t.name == "free").expect("free");
+        let ty = &free.descriptor.parameters[0].ty;
+        assert!(matches!(ty, afz_protocol::TypeNode::Collection { collection: afz_protocol::CollectionKind::Array, .. }), "Vec<u8> lowers to an array: {ty:?}");
+    }
+}
