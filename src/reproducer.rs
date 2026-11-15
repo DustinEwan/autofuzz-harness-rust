@@ -30,7 +30,7 @@ pub fn script(tgt: &Tgt, values: &[ValueTree], replay: Option<(&std::path::Path,
             "//!\n\
              //! Replay (the scan's driver crate already compiles this file; one command):\n\
              //!\n\
-             //!     RUSTFLAGS=-Cinstrument-coverage cargo run --manifest-path {} --bin {bin}\n\
+             //!     RUSTFLAGS=-Cinstrument-coverage LLVM_PROFILE_FILE=/dev/null cargo run --manifest-path {} --bin {bin}\n\
              //!\n\
              //! The same `main` replays in any crate whose `Cargo.toml` carries a path\n\
              //! dependency on the crate under test.\n\n",
@@ -287,7 +287,7 @@ mod tests {
         let manifest = std::path::Path::new("/scan/.autofuzz/driver/Cargo.toml");
         let script = script(&tgt, &[], Some((manifest, "afz-repro-deadbeef"))).unwrap();
         assert!(
-            script.contains("RUSTFLAGS=-Cinstrument-coverage cargo run --manifest-path /scan/.autofuzz/driver/Cargo.toml --bin afz-repro-deadbeef"),
+            script.contains("RUSTFLAGS=-Cinstrument-coverage LLVM_PROFILE_FILE=/dev/null cargo run --manifest-path /scan/.autofuzz/driver/Cargo.toml --bin afz-repro-deadbeef"),
             "{script}"
         );
         assert!(script.contains("src/lib.rs"), "the fault source line survives in the replay form");
