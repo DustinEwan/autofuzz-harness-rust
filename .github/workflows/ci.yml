@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The plugin's own tests: discovery against the committed probe crate, the driver build and
+  # one real call, the reproducer's syntax gate, and the wire vocabulary pinned against the
+  # engine's schema literals. They also prove `afz-protocol` resolves as a git dependency.
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Tests
+        run: cargo test
+
+  # The conformance gate, run through the product command rather than a bespoke harness:
+  # `afz install-harness` builds the plugin, the emitter, and the check binary, renders the
+  # fixture crate, drives the suite with the LLVM-instrumented driver, and prints the report.
+  # Linux only, like the harness itself: the coverage design reads ELF profiling sections.
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install afz
+        run: cargo install --git https://github.com/DustinEwan/autofuzz.git afz-cli --locked
+
+      - name: Validate
+        run: afz install-harness "$GITHUB_WORKSPACE" --json > report.json
+
+      # The goldens this repository publishes: zero violations, all twelve template properties
+      # passing - Rust realizes every one of them - and the check binary agreeing on all seven
+      # fixture-shaped ids. A deleted or gutted validator fails the second assertion.
+      - name: Assert the report
+        run: |
+          jq -e '((.violations | length) == 0)
+                 and ((.template.properties | map(select(.verdict == "pass") | .id) | sort) == ["crash-unguarded","coverage-digest-live","deadline-sleep","guard-refusal","method-receiver","opaque-return","private-symbol","reproducer-script","stdout-purity","unbuildable-symbol","unconstructible-receiver","unrepresentable-symbol"])
+                 and ((.template.properties | map(select(.verdict == "not-applicable")) | length) == 0)' report.json
+          jq -e '((.validator.properties | map(select(.verdict == "pass")) | length) == 7)
+                 and ((.validator.properties | map(select(.verdict == "fail")) | length) == 0)' report.json

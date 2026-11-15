@@ -3,3 +3,4 @@
 /test-targets/*/.autofuzz
 /test-targets/*/Cargo.lock
 /.autofuzz
+*.profraw
