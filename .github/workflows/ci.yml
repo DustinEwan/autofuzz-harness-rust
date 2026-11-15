@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools
 
       - name: Tests
         run: cargo test
@@ -32,6 +34,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          # The handshake declares `coverage` only when the toolchain ships `llvm-profdata`;
+          # the minimal profile does not, and a manifest that realizes `coverage-digest-live`
+          # then fails the suite for a toolchain reason, not a plugin one.
+          components: llvm-tools
 
       - name: Install afz
         run: cargo install --git https://github.com/DustinEwan/autofuzz.git afz-cli --locked
