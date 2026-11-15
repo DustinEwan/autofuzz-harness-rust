@@ -424,12 +424,19 @@ pub fn run(driver: &Driver, tgt: &Tgt, args: Vec<serde_json::Value>, deadline: D
     let request = serde_json::json!({ "call": tgt.call_path, "args": args });
     let mut command = Command::new(&driver.bin);
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    // An instrumented child whose `LLVM_PROFILE_FILE` is unset dumps the runtime's fallback
+    // `default_*.profraw` into its working directory, which is wherever the scan left it.
+    // Point the runtime at the invocation's own file and run the child in the profiles
+    // directory, so every profile write lands where the plugin reads and cleans up.
+    command.current_dir(&driver.profiles);
     match profraw {
         Some(path) => {
             command.env("AFZ_DRIVER_PROFRAW", path);
+            command.env("LLVM_PROFILE_FILE", path);
         }
         None => {
             command.env("AFZ_DRIVER_PROFRAW", "");
+            command.env("LLVM_PROFILE_FILE", ::std::path::Path::new(&driver.profiles).join("discarded.profraw"));
         }
     }
     #[cfg(unix)]
