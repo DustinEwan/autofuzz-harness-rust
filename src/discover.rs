@@ -35,6 +35,8 @@ const MAX_DEPTH: u32 = 8;
 pub struct Package {
     /// The crate name with `-` replaced by `_`, the path segment a call starts with.
     pub name: String,
+    /// The name as its own `Cargo.toml` spells it, the key the driver's dependency table needs.
+    pub manifest_name: String,
     pub root: PathBuf,
     pub lib_rs: PathBuf,
 }
@@ -148,7 +150,7 @@ fn find_packages(root: &Path) -> Vec<Package> {
             // reachable from outside their crate.
             continue;
         }
-        found.push(Package { name: name.replace('-', "_"), root: dir, lib_rs });
+        found.push(Package { name: name.replace('-', "_"), manifest_name: name, root: dir, lib_rs });
     }
     found
 }
@@ -550,12 +552,12 @@ fn collect_impl(
             ));
             continue;
         }
-        let receiver = match &method.sig.receiver() {
+        let receiver = match method.sig.receiver() {
             None => ReceiverKind::None,
-            Some(receiver) => match &receiver.reference {
-                None => ReceiverKind::Value,
-                Some((_, Some(_))) => ReceiverKind::RefMut,
-                Some(_) => ReceiverKind::Ref,
+            Some(receiver) => match (&receiver.reference, &receiver.mutability) {
+                (None, _) => ReceiverKind::Value,
+                (Some(_), Some(_)) => ReceiverKind::RefMut,
+                (Some(_), None) => ReceiverKind::Ref,
             },
         };
         analyze(
