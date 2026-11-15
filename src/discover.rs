@@ -109,7 +109,7 @@ pub fn discover(req: &DiscoverReq) -> Result<Inventory, String> {
 
     let mut files: Vec<ParsedFile> = Vec::new();
     for package in &inventory.packages {
-        parse_crate(package, &mut files);
+        parse_crate(package, &inventory.root, &mut files);
     }
 
     // The type index spans every parsed package: a path dependency's types are outside it and
@@ -218,14 +218,14 @@ struct ParsedFile {
     text: String,
 }
 
-fn parse_crate(package: &Package, out: &mut Vec<ParsedFile>) {
-    parse_file_into(package, package.lib_rs.clone(), package.name.clone(), true, out);
+fn parse_crate(package: &Package, root: &Path, out: &mut Vec<ParsedFile>) {
+    parse_file_into(package, root, package.lib_rs.clone(), package.name.clone(), true, out);
 }
 
-fn parse_file_into(package: &Package, path: PathBuf, mod_path: String, reachable: bool, out: &mut Vec<ParsedFile>) {
+fn parse_file_into(package: &Package, root: &Path, path: PathBuf, mod_path: String, reachable: bool, out: &mut Vec<ParsedFile>) {
     let Ok(text) = std::fs::read_to_string(&path) else { return };
     let Ok(file) = syn::parse_file(&text) else { return };
-    let rel = relative(&package.root, &path);
+    let rel = relative(root, &path);
     let items = file.items.clone();
     out.push(ParsedFile { path: path.clone(), rel, mod_path: mod_path.clone(), reachable, file, text });
     let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
@@ -247,7 +247,7 @@ fn parse_file_into(package: &Package, path: PathBuf, mod_path: String, reachable
         };
         for candidate in candidates {
             if candidate.is_file() {
-                parse_file_into(package, candidate, child_mod, child_reachable, out);
+                parse_file_into(package, root, candidate, child_mod, child_reachable, out);
                 break;
             }
         }
