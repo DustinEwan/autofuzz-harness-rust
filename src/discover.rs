@@ -82,6 +82,9 @@ pub struct Tgt {
     pub call_path: String,
     pub params: Vec<ParamSpec>,
     pub ret: RetShape,
+    /// Whether the generated call reports the returned value: false when any type under it
+    /// is a project struct or enum, whose `Serialize` derive cannot be assumed.
+    pub returns_value: bool,
     pub unsafe_call: bool,
     pub descriptor: TargetDescriptor,
 }
@@ -219,10 +222,10 @@ struct ParsedFile {
 }
 
 fn parse_crate(package: &Package, root: &Path, out: &mut Vec<ParsedFile>) {
-    parse_file_into(package, root, package.lib_rs.clone(), package.name.clone(), true, out);
+    parse_file_into(root, package.lib_rs.clone(), package.name.clone(), true, out);
 }
 
-fn parse_file_into(package: &Package, root: &Path, path: PathBuf, mod_path: String, reachable: bool, out: &mut Vec<ParsedFile>) {
+fn parse_file_into(root: &Path, path: PathBuf, mod_path: String, reachable: bool, out: &mut Vec<ParsedFile>) {
     let Ok(text) = std::fs::read_to_string(&path) else { return };
     let Ok(file) = syn::parse_file(&text) else { return };
     let rel = relative(root, &path);
@@ -247,7 +250,7 @@ fn parse_file_into(package: &Package, root: &Path, path: PathBuf, mod_path: Stri
         };
         for candidate in candidates {
             if candidate.is_file() {
-                parse_file_into(package, root, candidate, child_mod, child_reachable, out);
+                parse_file_into(root, candidate, child_mod, child_reachable, out);
                 break;
             }
         }
@@ -715,10 +718,23 @@ fn analyze(
         },
     };
     // A return type lowers best-effort: an unlowerable return never blocks a target, it just
-    // leaves `returns` empty.
+    // leaves `returns` empty. The value the driver reports is dropped unless every type under
+    // it is wire-serializable, because a project type without `Serialize` fails the build.
     let returns = match &sig.output {
         syn::ReturnType::Default => None,
         syn::ReturnType::Type(_, ty) => lower::lower(&mut ctx, ty).ok().map(|lowered| lowered.ty),
+    };
+    let returns_value = match ret {
+        RetShape::Plain => match &sig.output {
+            syn::ReturnType::Type(_, ty) => lower::lower(&mut ctx, ty).ok().is_some_and(|lowered| lowered.build.serializable()),
+            syn::ReturnType::Default => false,
+        },
+        RetShape::Result | RetShape::Option => match &sig.output {
+            syn::ReturnType::Type(_, ty) => first_generic(ty)
+                .and_then(|inner| lower::lower(&mut ctx, inner).ok())
+                .is_some_and(|lowered| lowered.build.serializable()),
+            syn::ReturnType::Default => false,
+        },
     };
 
     let line = sig.ident.span().start().line as u32;
@@ -746,6 +762,7 @@ fn analyze(
         call_path: call_path.to_string(),
         params,
         ret,
+        returns_value,
         unsafe_call,
         descriptor: descriptor.clone(),
     });
@@ -792,12 +809,25 @@ fn guard_sites(block: &syn::Block) -> Vec<u32> {
             syn::visit::visit_expr(self, expr);
         }
     }
+
     let mut guard = Guard { lines: Vec::new() };
     guard.visit_block(block);
     guard.lines.sort_unstable();
     guard.lines.dedup();
     guard.lines.truncate(64);
     guard.lines
+}
+
+/// The first generic argument of `Result<T, E>` / `Option<T>`: the value the driver reports
+/// on the `Ok`/`Some` path.
+fn first_generic(ty: &syn::Type) -> Option<&syn::Type> {
+    let syn::Type::Path(path) = ty else { return None };
+    let last = path.path.segments.last()?;
+    let syn::PathArguments::AngleBracketed(args) = &last.arguments else { return None };
+    args.args.iter().find_map(|arg| match arg {
+        syn::GenericArgument::Type(inner) => Some(inner),
+        _ => None,
+    })
 }
 
 fn signature_text(sig: &syn::Signature) -> String {

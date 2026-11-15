@@ -257,6 +257,7 @@ mod tests {
                 .map(|(build, mode, receiver)| crate::discover::ParamSpec { build, mode, wrap: crate::lower::Wrap::None, receiver })
                 .collect(),
             ret,
+            returns_value: true,
             unsafe_call: false,
             descriptor: TargetDescriptor {
                 id: "afz:t:test".into(),

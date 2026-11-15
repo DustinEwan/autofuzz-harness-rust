@@ -99,6 +99,20 @@ pub enum Build {
 }
 
 impl Build {
+    /// Whether the generated driver may serialize a value of this build with
+    /// `serde_json::to_value`: wire types yes, project structs and enums no. Their
+    /// `Serialize` derive cannot be assumed from the field list alone, and a missing derive
+    /// is a trait bound that fails the whole driver build, so the value is dropped instead.
+    pub fn serializable(&self) -> bool {
+        match self {
+            Build::Bool | Build::Int(_) | Build::Float(_) | Build::Char | Build::Str | Build::PathBuf | Build::JsonValue => true,
+            Build::Vec { inner } | Build::Set { inner, .. } | Build::Option { inner } => inner.serializable(),
+            Build::Map { value, .. } => value.serializable(),
+            Build::Tuple { items } => items.iter().all(Build::serializable),
+            Build::Struct { .. } | Build::Enum { .. } => false,
+        }
+    }
+
     /// The Rust type the generated `let` binding carries. `PathBuf` is built even for a
     /// `&Path` parameter, because `&PathBuf` coerces to `&Path` at the call.
     pub fn rust_ty(&self) -> String {

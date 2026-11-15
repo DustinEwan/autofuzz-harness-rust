@@ -153,13 +153,16 @@ impl Harness {
     fn materialize(&mut self, tgt: &Tgt, values: &[ValueTree]) -> Result<Result<(), SkipReason>, (i64, String)> {
         self.ensure_driver()?;
         if self.driver.as_ref().is_some_and(|driver| driver.dropped.iter().any(|d| d == &tgt.id)) {
+            eprintln!("prepare: {} was dropped by the repair loop", tgt.name);
             return Ok(Err(SkipReason::UnconstructibleParameter));
         }
         if values.len() != tgt.params.len() {
+            eprintln!("prepare: {} got {} values for {} parameters", tgt.name, values.len(), tgt.params.len());
             return Ok(Err(SkipReason::UnsupportedSignature));
         }
-        for (param, value) in tgt.params.iter().zip(values) {
-            if driver::value_for(&param.build, value).is_err() {
+        for (index, (param, value)) in tgt.params.iter().zip(values).enumerate() {
+            if let Err(e) = driver::value_for(&param.build, value) {
+                eprintln!("prepare: {}.arg{index} rejected the value: {e}", tgt.name);
                 return Ok(Err(SkipReason::UnconstructibleParameter));
             }
         }
