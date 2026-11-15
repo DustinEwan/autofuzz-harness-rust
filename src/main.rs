@@ -329,13 +329,19 @@ impl Harness {
             let bin_path = bin_dir.join(format!("{bin}.rs"));
             // Only advertise the command if the binary compiles: a reproducer that fails to
             // build would be worse than the paste-in instructions.
-            if std::fs::create_dir_all(&bin_dir).is_ok()
-                && std::fs::write(&bin_path, &script).is_ok()
-                && driver::build_repro(&driver.dir, &bin).is_ok()
-            {
-                return Ok(ReproducerResp { extension: "rs".into(), script });
+            let placed = std::fs::create_dir_all(&bin_dir)
+                .and_then(|()| std::fs::write(&bin_path, &script))
+                .map_err(|e| format!("cannot write {}: {e}", bin_path.display()));
+            let built = placed.and_then(|()| driver::build_repro(&driver.dir, &bin));
+            match built {
+                Ok(()) => return Ok(ReproducerResp { extension: "rs".into(), script }),
+                Err(e) => {
+                    eprintln!("reproducer: {bin} is not replayable as a driver binary: {e}");
+                    let _ = std::fs::remove_file(&bin_path);
+                }
             }
-            let _ = std::fs::remove_file(&bin_path);
+        } else {
+            eprintln!("reproducer: no built driver crate, so the script carries paste-in instructions only");
         }
         let script = reproducer::script(tgt, &req.values, None).map_err(|e| (rpc::PLUGIN_ERROR, e))?;
         Ok(ReproducerResp { extension: "rs".into(), script })

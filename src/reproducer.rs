@@ -29,9 +29,9 @@ pub fn script(tgt: &Tgt, values: &[ValueTree], replay: Option<(&std::path::Path,
         Some((manifest, bin)) => out.push_str(&format!(
             "//!\n\
              //! Replay (the scan's driver crate already compiles this file; one command):\n\
-             !/\n\
+             //!\n\
              //!     RUSTFLAGS=-Cinstrument-coverage cargo run --manifest-path {} --bin {bin}\n\
-             !/\n\
+             //!\n\
              //! The same `main` replays in any crate whose `Cargo.toml` carries a path\n\
              //! dependency on the crate under test.\n\n",
             manifest.display()
@@ -291,6 +291,26 @@ mod tests {
             "{script}"
         );
         assert!(script.contains("src/lib.rs"), "the fault source line survives in the replay form");
+    }
+
+    #[test]
+    fn both_script_forms_parse_as_rust() {
+        use std::io::Write;
+        let tgt = target("probe::bounded", vec![(Build::Int("i64"), PassMode::Value, ReceiverKind::None)], crate::discover::RetShape::Result);
+        let values = [ValueTree::new(ValueNode::number(500.0))];
+        let manifest = std::path::Path::new("/scan/.autofuzz/driver/Cargo.toml");
+        for script in [script(&tgt, &values, None).unwrap(), script(&tgt, &values, Some((manifest, "afz-repro-deadbeef"))).unwrap()] {
+            let mut child = std::process::Command::new("rustfmt")
+                .args(["--edition", "2021", "--emit", "stdout"])
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .expect("rustfmt ships with the toolchain");
+            child.stdin.take().expect("stdin").write_all(script.as_bytes()).expect("write");
+            let out = child.wait_with_output().expect("rustfmt");
+            assert!(out.status.success(), "rustfmt rejected:\n{script}\n{}", String::from_utf8_lossy(&out.stderr));
+        }
     }
 
     #[test]
