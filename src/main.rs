@@ -154,7 +154,10 @@ impl Harness {
         self.ensure_driver()?;
         if self.driver.as_ref().is_some_and(|driver| driver.dropped.iter().any(|d| d == &tgt.id)) {
             eprintln!("prepare: {} was dropped by the repair loop", tgt.name);
-            return Ok(Err(SkipReason::UnconstructibleParameter));
+            // `discovery-error` is the reason the conformance template reserves for a symbol
+            // the harness's own build cannot produce (`unbuildable-symbol`): the signature was
+            // acceptable to discovery and the failure is the harness's, not the input's.
+            return Ok(Err(SkipReason::DiscoveryError));
         }
         if values.len() != tgt.params.len() {
             eprintln!("prepare: {} got {} values for {} parameters", tgt.name, values.len(), tgt.params.len());

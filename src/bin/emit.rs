@@ -1,7 +1,7 @@
 //! Render the conformance fixture project for the Rust harness.
 //!
 //! `afz validate-harness` and `afz install-harness` validate a plugin against the template
-//! (`crates/afz-conformance/template/v1.json` in the engine repository): ten semantic
+//! (`crates/afz-conformance/template/v1.json` in the engine repository): twelve semantic
 //! properties stated as wire-level expectations. This emitter renders a real crate - a
 //! `Cargo.toml` and a `src/lib.rs` with one symbol per property - writes the `autofuzz.json`
 //! that points the plugin at it, and writes `afz-conformance-manifest.json` naming the symbol
@@ -104,6 +104,29 @@ pub fn sleeper(value: u64) -> u64 {
     std::thread::sleep(std::time::Duration::from_secs(10));
     value
 }
+
+pub struct Reading {
+    pub code: u64,
+}
+
+pub fn reading(value: u64) -> Reading {
+    // opaque-return: `Reading` is a project type without `Serialize`, so the driver drops
+    // the value instead of serializing it: the call must still answer ok, with no value.
+    Reading { code: value }
+}
+
+pub struct Silent;
+
+pub fn broken(value: u64) -> Result<u64, Silent> {
+    // unbuildable-symbol: discovery accepts this signature - constructible parameter,
+    // serializable Ok - but the driver formats the error with `{:?}` and `Silent`
+    // implements neither `Debug` nor `Display`. Only this call fails to compile, so the
+    // repair loop drops it alone and its siblings survive.
+    if value > 100 {
+        return Err(Silent);
+    }
+    Ok(value)
+}
 "#;
 
 fn autofuzz_json() -> String {
@@ -150,6 +173,8 @@ fn manifest(check: &Path, lib: &Path) -> String {
             "stdout-purity": { "symbol": "noise" },
             "reproducer-script": { "symbol": "crash", "input": [number(7)] },
             "deadline-sleep": { "symbol": "sleeper", "input": [number(1)] },
+            "opaque-return": { "symbol": "reading", "input": [number(3)] },
+            "unbuildable-symbol": { "symbol": "broken", "input": [number(0)] },
         },
         // The project judges its own fixture: the check binary reads `src/lib.rs` with `syn`
         // and compiles it with `rustc`, with no protocol and no plugin in the path.
