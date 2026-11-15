@@ -1,10 +1,11 @@
 //! Reproducer: render a standalone `.rs` script that replays one call.
 //!
 //! The suite stores the bytes verbatim and checks only that the script is non-empty and names
-//! the fixture file the fault came from; running it is the reader's act, so the script is
-//! written to be pasted into a binary crate with a path dependency on the crate under test.
-//! The literals are Rust, not JSON: the point of a `.rs` reproducer is that a Rust reader can
-//! see the call the generator made.
+//! the fixture file the fault came from. The script is a complete `main`: when the driver crate
+//! is available, the harness also places this exact file in it as a binary and names the one
+//! command that runs it, because the driver crate already carries the path dependencies and the
+//! compiled dependency graph. The literals are Rust, not JSON: the point of a `.rs` reproducer
+//! is that a Rust reader can see the call the generator made.
 
 use afz_protocol::ValueTree;
 
@@ -15,7 +16,7 @@ use crate::lower::{Build, VariantShape};
 /// The complete script for one call. An `Err` here means a value no longer materializes, and
 /// the harness answers the `reproducer` request with a plugin error rather than a broken
 /// script.
-pub fn script(tgt: &Tgt, values: &[ValueTree]) -> Result<String, String> {
+pub fn script(tgt: &Tgt, values: &[ValueTree], replay: Option<(&std::path::Path, &str)>) -> Result<String, String> {
     let mut out = String::new();
     out.push_str(&format!("//! autofuzz reproducer for `{}`\n", tgt.name));
     if let Some(file) = &tgt.descriptor.origin.file {
@@ -24,11 +25,23 @@ pub fn script(tgt: &Tgt, values: &[ValueTree]) -> Result<String, String> {
     if let Some(module) = &tgt.descriptor.origin.module {
         out.push_str(&format!("//! Module: {module}\n"));
     }
-    out.push_str(
-        "//!\n\
-         //! Replay: create a binary crate whose `Cargo.toml` carries a path dependency on\n\
-         //! the crate under test, paste this file into its `src/main.rs`, and `cargo run`.\n\n",
-    );
+    match replay {
+        Some((manifest, bin)) => out.push_str(&format!(
+            "//!\n\
+             //! Replay (the scan's driver crate already compiles this file; one command):\n\
+             !/\n\
+             //!     RUSTFLAGS=-Cinstrument-coverage cargo run --manifest-path {} --bin {bin}\n\
+             !/\n\
+             //! The same `main` replays in any crate whose `Cargo.toml` carries a path\n\
+             //! dependency on the crate under test.\n\n",
+            manifest.display()
+        )),
+        None => out.push_str(
+            "//!\n\
+             //! Replay: create a binary crate whose `Cargo.toml` carries a path dependency on\n\
+             //! the crate under test, paste this file into its `src/main.rs`, and `cargo run`.\n\n",
+        ),
+    }
     out.push_str("fn main() {\n");
     for (index, (param, tree)) in tgt.params.iter().zip(values).enumerate() {
         let literal = literal(&param.build, tree)?;
@@ -262,10 +275,22 @@ mod tests {
     #[test]
     fn script_names_the_source_file_and_renders_the_call() {
         let tgt = target("probe::bounded", vec![(Build::Int("i64"), PassMode::Value, ReceiverKind::None)], crate::discover::RetShape::Result);
-        let script = script(&tgt, &[ValueTree::new(ValueNode::Number { value: afz_protocol::NumberValue::Finite(500.0) })]).unwrap();
+        let script = script(&tgt, &[ValueTree::new(ValueNode::Number { value: afz_protocol::NumberValue::Finite(500.0) })], None).unwrap();
         assert!(script.contains("src/lib.rs"), "the script must name the file the fault came from");
         assert!(script.contains("let mut a0: i64 = 500i64;"), "{script}");
         assert!(script.contains("let _result = probe::bounded(a0);"), "{script}");
+    }
+
+    #[test]
+    fn replay_header_names_the_exact_command() {
+        let tgt = target("probe::bounded", vec![(Build::Int("i64"), PassMode::Value, ReceiverKind::None)], crate::discover::RetShape::Result);
+        let manifest = std::path::Path::new("/scan/.autofuzz/driver/Cargo.toml");
+        let script = script(&tgt, &[], Some((manifest, "afz-repro-deadbeef"))).unwrap();
+        assert!(
+            script.contains("RUSTFLAGS=-Cinstrument-coverage cargo run --manifest-path /scan/.autofuzz/driver/Cargo.toml --bin afz-repro-deadbeef"),
+            "{script}"
+        );
+        assert!(script.contains("src/lib.rs"), "the fault source line survives in the replay form");
     }
 
     #[test]

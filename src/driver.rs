@@ -350,7 +350,7 @@ fn cargo_build(driver: &Driver) -> Result<(), String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let run = |offline: bool| -> Result<(), String> {
         let mut command = Command::new(&cargo);
-        command.arg("build").current_dir(&driver.dir).env("RUSTFLAGS", "-Cinstrument-coverage").env("CARGO_TERM_COLOR", "never");
+        command.arg("build").arg("--bin").arg("afz-rust-driver").current_dir(&driver.dir).env("RUSTFLAGS", "-Cinstrument-coverage").env("CARGO_TERM_COLOR", "never");
         if offline {
             command.arg("--offline");
         }
@@ -415,6 +415,28 @@ pub enum Run {
     Silent(String),
     /// The deadline cut the call; the child was killed.
     Deadline,
+}
+
+/// Build one reproducer binary of the driver crate. The same `RUSTFLAGS` as the scan build
+/// reuse the compiled dependency graph, so only the new binary is compiled. An `Err` carries
+/// the compiler's stderr; the caller drops the file and falls back to the paste-in header.
+pub fn build_repro(dir: &Path, bin: &str) -> Result<(), String> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let output = Command::new(&cargo)
+        .arg("build")
+        .arg("--offline")
+        .arg("--bin")
+        .arg(bin)
+        .current_dir(dir)
+        .env("RUSTFLAGS", "-Cinstrument-coverage")
+        .env("CARGO_TERM_COLOR", "never")
+        .output()
+        .map_err(|e| format!("{cargo} did not start: {e}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).into_owned())
+    }
 }
 
 /// Run one call in a fresh driver child. The child gets its own process group so a kill takes

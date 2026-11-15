@@ -29,6 +29,7 @@ use afz_protocol::{
     ReproducerResp, SkipReason, TargetClass, ValueNode, ValueTree, PROTOCOL_VERSION,
 };
 use serde::de::DeserializeOwned;
+use sha2::{Digest as _, Sha256};
 
 use crate::coverage::Coverage;
 use crate::discover::{Inventory, Tgt};
@@ -314,7 +315,29 @@ impl Harness {
 
     fn reproducer(&self, req: ReproducerReq) -> Result<ReproducerResp, (i64, String)> {
         let tgt = self.target(&req.target_id)?;
-        let script = reproducer::script(tgt, &req.values).map_err(|e| (rpc::PLUGIN_ERROR, e))?;
+        // The binary's name is the target plus the input: the same call always lands on the
+        // same binary, so repeated `reproducer` requests overwrite rather than accumulate.
+        let mut hasher = Sha256::new();
+        hasher.update(req.target_id.as_bytes());
+        hasher.update(serde_json::to_string(&req.values).unwrap_or_default().as_bytes());
+        let hex: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+        let bin = format!("afz-repro-{}", &hex[..8]);
+        if let Some(driver) = self.driver.as_ref() {
+            let manifest = driver.dir.join("Cargo.toml");
+            let script = reproducer::script(tgt, &req.values, Some((&manifest, &bin))).map_err(|e| (rpc::PLUGIN_ERROR, e))?;
+            let bin_dir = driver.dir.join("src").join("bin");
+            let bin_path = bin_dir.join(format!("{bin}.rs"));
+            // Only advertise the command if the binary compiles: a reproducer that fails to
+            // build would be worse than the paste-in instructions.
+            if std::fs::create_dir_all(&bin_dir).is_ok()
+                && std::fs::write(&bin_path, &script).is_ok()
+                && driver::build_repro(&driver.dir, &bin).is_ok()
+            {
+                return Ok(ReproducerResp { extension: "rs".into(), script });
+            }
+            let _ = std::fs::remove_file(&bin_path);
+        }
+        let script = reproducer::script(tgt, &req.values, None).map_err(|e| (rpc::PLUGIN_ERROR, e))?;
         Ok(ReproducerResp { extension: "rs".into(), script })
     }
 
