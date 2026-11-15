@@ -36,8 +36,10 @@ jobs:
       - name: Install afz
         run: cargo install --git https://github.com/DustinEwan/autofuzz.git afz-cli --locked
 
+      # The report goes to a file even when the suite fails, so a failure prints its own
+      # violations here instead of leaving the log with only the summary line.
       - name: Validate
-        run: afz install-harness "$GITHUB_WORKSPACE" --json > report.json
+        run: afz install-harness "$GITHUB_WORKSPACE" --json > report.json || { jq '.violations' report.json; exit 1; }
 
       # The goldens this repository publishes: zero violations, all twelve template properties
       # passing - Rust realizes every one of them - and the check binary agreeing on all seven
