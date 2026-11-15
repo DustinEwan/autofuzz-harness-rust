@@ -174,6 +174,7 @@ impl Harness {
         let tgt = self.target(&req.target_id)?.clone();
         self.ensure_driver()?;
         let driver = self.driver.as_ref().expect("ensure_driver built it");
+        let root = self.inventory.as_ref().expect("ensure_driver needed it").root.clone();
         if driver.dropped.iter().any(|d| d == &tgt.id) {
             return Ok(afz_protocol::Outcome::Rejected(RejectedOutcome {
                 duration_ms: 0.0,
@@ -226,7 +227,11 @@ impl Harness {
                         detail: "returned None".into(),
                     }),
                     "panicked" => {
-                        let file = answer.get("file").and_then(|f| f.as_str()).unwrap_or("").to_string();
+                        // The compiler saw the crate through the driver's absolute path
+                        // dependency; the report speaks scan-root-relative paths, the same
+                        // spelling discovery puts in `origin.file`.
+                        let written = answer.get("file").and_then(|f| f.as_str()).unwrap_or("");
+                        let file = std::path::Path::new(written).strip_prefix(&root).map(|rel| rel.display().to_string()).unwrap_or_else(|| written.to_string());
                         let line = answer.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as u32;
                         let frames = if file.is_empty() {
                             Vec::new()
