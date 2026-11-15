@@ -1,0 +1,4 @@
+/target
+/test-targets/*/target
+/test-targets/*/.autofuzz
+/test-targets/*/Cargo.lock

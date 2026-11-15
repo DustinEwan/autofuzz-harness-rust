@@ -1,0 +1,6 @@
+{
+  "name": "rust",
+  "build": [["cargo", "build", "--release"]],
+  "command": ["target/release/afz-rust"],
+  "conformance": { "emitter": ["target/release/afz-rust-emit"], "deadlineMs": 1500 }
+}
