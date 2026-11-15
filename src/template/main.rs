@@ -58,7 +58,7 @@ fn main() {
         Err(e) => serde_json::json!({"status": "error", "message": format!("the request is not valid JSON: {e}")}),
     };
     dump_profile();
-    let stdout = std::io::stdout();
+    let mut stdout = std::io::stdout();
     let _ = writeln!(stdout, "{response}");
     let _ = stdout.flush();
 }
