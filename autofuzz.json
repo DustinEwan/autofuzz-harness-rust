@@ -1,0 +1,19 @@
+{
+  "project": "rust-harness",
+  "harness": {
+    "name": "rust",
+    "include": ["src/**/*.rs"]
+  },
+  "oracles": {},
+  "budget": {
+    "invocations": 1500,
+    "wallClockMs": 300000,
+    "workers": 1,
+    "maxCorpus": 512,
+    "strategy": "guided"
+  },
+  "output": {
+    "dir": ".autofuzz",
+    "renderers": ["json", "markdown"]
+  }
+}

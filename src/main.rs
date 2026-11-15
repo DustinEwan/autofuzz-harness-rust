@@ -13,12 +13,6 @@
 //! by killing the group, a panic is caught and reported with its source location as the fault
 //! frame, and the target's own stdout writes land in a pipe the protocol never reads.
 
-mod coverage;
-mod discover;
-mod driver;
-mod lower;
-mod reproducer;
-
 use std::io;
 use std::path::PathBuf;
 
@@ -31,8 +25,9 @@ use afz_protocol::{
 use serde::de::DeserializeOwned;
 use sha2::{Digest as _, Sha256};
 
-use crate::coverage::Coverage;
-use crate::discover::{Inventory, Tgt};
+use afz_rust::{coverage, discover, driver, reproducer};
+use afz_rust::coverage::Coverage;
+use afz_rust::discover::{Inventory, Tgt};
 
 /// A request the plugin cannot answer at all: an unknown target, or a method this harness
 /// does not implement.
