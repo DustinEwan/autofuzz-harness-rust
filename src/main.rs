@@ -231,7 +231,7 @@ impl Harness {
                         // dependency; the report speaks scan-root-relative paths, the same
                         // spelling discovery puts in `origin.file`.
                         let written = answer.get("file").and_then(|f| f.as_str()).unwrap_or("");
-                        let file = std::path::Path::new(written).strip_prefix(&root).map(|rel| rel.display().to_string()).unwrap_or_else(|| written.to_string());
+                        let file = std::path::Path::new(written).strip_prefix(&root).map(|rel| rel.display().to_string()).unwrap_or_else(|_| written.to_string());
                         let line = answer.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as u32;
                         let frames = if file.is_empty() {
                             Vec::new()
