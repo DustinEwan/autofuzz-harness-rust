@@ -89,7 +89,7 @@ fn literal(build: &Build, tree: &ValueTree) -> Result<String, String> {
             }
             _ => return Err("expected a string".into()),
         },
-        Build::JsonValue => format!("::serde_json::json!({})", driver::json_passthrough(node)?.to_string()),
+        Build::JsonValue => format!("::serde_json::json!({})", driver::json_passthrough(node)?),
         Build::Vec { inner } => {
             let items: Vec<&ValueTree> = match node {
                 afz_protocol::ValueNode::Array { items } | afz_protocol::ValueNode::Stream { items, .. } => items.iter().collect(),

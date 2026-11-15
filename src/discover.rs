@@ -457,6 +457,7 @@ fn impl_type_name(item: &ItemImpl) -> Option<String> {
 }
 
 /// Walk the items of one file (recursing into inline modules) and report every function.
+#[allow(clippy::too_many_arguments)]
 fn collect_items(
     items: &[Item],
     file: &ParsedFile,
@@ -512,6 +513,7 @@ fn collect_items(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_impl(
     item: &ItemImpl,
     file: &ParsedFile,

@@ -86,7 +86,7 @@ impl Coverage {
         if !output.status.success() {
             return Err(format!(
                 "llvm-profdata failed: {}",
-                String::from_utf8_lossy(&output.stderr).lines().next().unwrap_or("").to_string()
+                String::from_utf8_lossy(&output.stderr).lines().next().unwrap_or("")
             ));
         }
         Ok(parse_show(&String::from_utf8_lossy(&output.stdout)))
